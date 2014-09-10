@@ -1255,7 +1255,7 @@ static int snd_pcm_dev_disconnect(struct snd_device *device)
 		}
 	}
 	mutex_unlock(&pcm->open_mutex);
- unlock:
+  unlock:
 	mutex_unlock(&register_mutex);
 	return 0;
 }
