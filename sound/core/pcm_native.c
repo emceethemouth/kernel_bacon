@@ -1676,7 +1676,6 @@ static int snd_pcm_link(struct snd_pcm_substream *substream, int fd)
 	write_unlock_irq(&snd_pcm_link_rwlock);
 	up_write(&snd_pcm_link_rwsem);
  _nolock:
-	snd_card_unref(substream1->pcm->card);
 	fput(file);
 	if (res < 0)
 		kfree(group);
@@ -2157,10 +2156,7 @@ static int snd_pcm_playback_open(struct inode *inode, struct file *file)
 		return err;
 	pcm = snd_lookup_minor_data(iminor(inode),
 				    SNDRV_DEVICE_TYPE_PCM_PLAYBACK);
-	err = snd_pcm_open(file, pcm, SNDRV_PCM_STREAM_PLAYBACK);
-	if (pcm)
-		snd_card_unref(pcm->card);
-	return err;
+	return snd_pcm_open(file, pcm, SNDRV_PCM_STREAM_PLAYBACK);
 }
 
 static int snd_pcm_capture_open(struct inode *inode, struct file *file)
@@ -2171,10 +2167,7 @@ static int snd_pcm_capture_open(struct inode *inode, struct file *file)
 		return err;
 	pcm = snd_lookup_minor_data(iminor(inode),
 				    SNDRV_DEVICE_TYPE_PCM_CAPTURE);
-	err = snd_pcm_open(file, pcm, SNDRV_PCM_STREAM_CAPTURE);
-	if (pcm)
-		snd_card_unref(pcm->card);
-	return err;
+	return snd_pcm_open(file, pcm, SNDRV_PCM_STREAM_CAPTURE);
 }
 
 static int snd_pcm_open(struct file *file, struct snd_pcm *pcm, int stream)
@@ -3280,10 +3273,18 @@ EXPORT_SYMBOL_GPL(snd_pcm_lib_default_mmap);
 int snd_pcm_lib_mmap_iomem(struct snd_pcm_substream *substream,
 			   struct vm_area_struct *area)
 {
-	struct snd_pcm_runtime *runtime = substream->runtime;;
+	long size;
+	unsigned long offset;
 
 	area->vm_page_prot = pgprot_noncached(area->vm_page_prot);
-	return vm_iomap_memory(area, runtime->dma_addr, runtime->dma_bytes);
+	area->vm_flags |= VM_IO;
+	size = area->vm_end - area->vm_start;
+	offset = area->vm_pgoff << PAGE_SHIFT;
+	if (io_remap_pfn_range(area, area->vm_start,
+				(substream->runtime->dma_addr + offset) >> PAGE_SHIFT,
+				size, area->vm_page_prot))
+		return -EAGAIN;
+	return 0;
 }
 
 EXPORT_SYMBOL(snd_pcm_lib_mmap_iomem);
